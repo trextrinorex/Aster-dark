@@ -1,110 +1,36 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 
-const canvas = document.querySelector('#space');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, powerPreference:'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.8));
-renderer.setSize(innerWidth, innerHeight);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
+const canvas=document.querySelector('#space');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.75));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;
+const scene=new THREE.Scene();const camera=new THREE.PerspectiveCamera(35,innerWidth/innerHeight,.1,100);camera.position.set(0,0,5.15);
+const earthGroup=new THREE.Group();scene.add(earthGroup);
+const loader=new THREE.TextureLoader();loader.setCrossOrigin('anonymous');
+const nightTexture=loader.load('https://eoimages.gsfc.nasa.gov/images/imagerecords/144000/144898/earthlights_2020_lrg.jpg',undefined,undefined,()=>console.warn('NASA night texture unavailable; fallback remains visible.'));nightTexture.colorSpace=THREE.SRGBColorSpace;
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x030404);
-const camera = new THREE.PerspectiveCamera(35, innerWidth/innerHeight, .1, 100);
-camera.position.set(0,0,5.4);
+const starGeo=new THREE.BufferGeometry();const count=matchMedia('(max-width:800px)').matches?1100:2600;const pos=new Float32Array(count*3);for(let i=0;i<count;i++){const r=25+Math.random()*18,t=Math.random()*Math.PI*2,p=Math.acos(2*Math.random()-1);pos[i*3]=r*Math.sin(p)*Math.cos(t);pos[i*3+1]=r*Math.sin(p)*Math.sin(t);pos[i*3+2]=r*Math.cos(p)}starGeo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+const stars=new THREE.Points(starGeo,new THREE.PointsMaterial({color:0xc8d2cf,size:.028,transparent:true,opacity:.78,sizeAttenuation:true}));scene.add(stars);const restoreStars=new THREE.Points(starGeo.clone(),new THREE.PointsMaterial({color:0xdce8ff,size:.04,transparent:true,opacity:0,sizeAttenuation:true}));scene.add(restoreStars);
+const earth=new THREE.Mesh(new THREE.SphereGeometry(1.64,128,128),new THREE.MeshStandardMaterial({color:0x71898f,roughness:.92,metalness:.02}));earthGroup.add(earth);
+const nightLayer=new THREE.Mesh(new THREE.SphereGeometry(1.653,128,128),new THREE.MeshBasicMaterial({map:nightTexture,transparent:true,opacity:.72,blending:THREE.AdditiveBlending,depthWrite:false}));earthGroup.add(nightLayer);
+const uniforms={uSun:{value:new THREE.Vector3(-.45,.2,.88).normalize()},uNight:{value:.72}};
+const mask=new THREE.Mesh(new THREE.SphereGeometry(1.66,128,128),new THREE.ShaderMaterial({transparent:true,depthWrite:false,uniforms,vertexShader:`varying vec3 vN;void main(){vN=normalize(normalMatrix*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,fragmentShader:`uniform vec3 uSun;uniform float uNight;varying vec3 vN;void main(){float l=max(dot(normalize(vN),normalize((viewMatrix*vec4(uSun,0.)).xyz)),0.);float n=smoothstep(.46,.04,l);float e=smoothstep(.03,.22,abs(l-.5));gl_FragColor=vec4(vec3(1.,.56,.16)*n*uNight,n*uNight*.19+e*.025);}`}));earthGroup.add(mask);
+const atmosphere=new THREE.Mesh(new THREE.SphereGeometry(1.76,96,96),new THREE.ShaderMaterial({transparent:true,side:THREE.BackSide,blending:THREE.AdditiveBlending,depthWrite:false,uniforms:{uColor:{value:new THREE.Color(0x6d9eaa)}},vertexShader:`varying vec3 n;varying vec3 v;void main(){vec4 m=modelViewMatrix*vec4(position,1.);v=normalize(-m.xyz);n=normalize(normalMatrix*normal);gl_Position=projectionMatrix*m;}`,fragmentShader:`uniform vec3 uColor;varying vec3 n;varying vec3 v;void main(){float r=pow(1.-max(dot(n,v),0.),3.4);gl_FragColor=vec4(uColor,r*.23);}`}));earthGroup.add(atmosphere);
+const clouds=new THREE.Mesh(new THREE.SphereGeometry(1.685,96,96),new THREE.MeshBasicMaterial({color:0xb8c5c1,transparent:true,opacity:.075,blending:THREE.ScreenBlending,depthWrite:false}));earthGroup.add(clouds);
+const cityData=[['Delhi',28.6139,77.209,'IND-DEL',86],['Mumbai',19.076,72.8777,'IND-MUM',82],['London',51.5072,-.1276,'GBR-LON',79],['Paris',48.8566,2.3522,'FRA-PAR',81],['New York',40.7128,-74.006,'USA-NYC',91],['Los Angeles',34.0522,-118.2437,'USA-LAX',88],['Tokyo',35.6762,139.6503,'JPN-TYO',94],['Shanghai',31.2304,121.4737,'CHN-SHA',96],['São Paulo',-23.5505,-46.6333,'BRA-SAO',84],['Sydney',-33.8688,151.2093,'AUS-SYD',74]];
+function latLon(lat,lon,r=1.675){const p=(90-lat)*Math.PI/180,t=(lon+180)*Math.PI/180;return new THREE.Vector3(-r*Math.sin(p)*Math.cos(t),r*Math.cos(p),r*Math.sin(p)*Math.sin(t))}
+const cityPoints=[];cityData.forEach(([name,lat,lon,code,index])=>{const m=new THREE.Mesh(new THREE.SphereGeometry(.024+index/5000,10,10),new THREE.MeshBasicMaterial({color:0xffb347,transparent:true,opacity:.78}));m.position.copy(latLon(lat,lon));m.userData={name,lat,lon,code,index};earthGroup.add(m);cityPoints.push(m)});
+scene.add(new THREE.DirectionalLight(0xe4eeee,2));scene.add(new THREE.AmbientLight(0x253136,.28));
+let rx=.12,ry=-.82,trx=rx,tryy=ry,scale=1,ts=1,drag=false,lx=0,ly=0;canvas.addEventListener('pointerdown',e=>{drag=true;lx=e.clientX;ly=e.clientY;canvas.setPointerCapture(e.pointerId)});canvas.addEventListener('pointerup',()=>drag=false);canvas.addEventListener('pointercancel',()=>drag=false);canvas.addEventListener('pointermove',e=>{if(!drag)return;tryy+=(e.clientX-lx)*.005;trx+=(e.clientY-ly)*.0035;trx=Math.max(-.75,Math.min(.75,trx));lx=e.clientX;ly=e.clientY});canvas.addEventListener('wheel',e=>ts=Math.max(.72,Math.min(1.42,ts-e.deltaY*.00045)),{passive:true});
+let scrollTarget=0,scrollProgress=0;addEventListener('scroll',()=>{const max=document.documentElement.scrollHeight-innerHeight;scrollTarget=max?scrollY/max:0},{passive:true});function animate(){requestAnimationFrame(animate);if(!matchMedia('(prefers-reduced-motion:reduce)').matches){rx+=(trx-rx)*.055;ry+=(tryy-ry)*.055;scale+=(ts-scale)*.055;scrollProgress+=(scrollTarget-scrollProgress)*.035;earthGroup.rotation.x=rx+scrollProgress*.08;earthGroup.rotation.y=ry+scrollProgress*.65;clouds.rotation.y+=.00016;stars.rotation.y+=.00005}earthGroup.scale.setScalar(scale);renderer.render(scene,camera)}animate();addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.75))});
 
-const group = new THREE.Group();
-scene.add(group);
-const earthGroup = new THREE.Group();
-group.add(earthGroup);
+const yearSlider=document.querySelector('#yearSlider'),yearReadout=document.querySelector('#yearReadout'),timelineYear=document.querySelector('#timelineYear'),indexReadout=document.querySelector('#indexReadout'),statNumber=document.querySelector('#statNumber'),observationLabel=document.querySelector('#observationLabel'),observationYear=document.querySelector('#observationYear'),yearCaption=document.querySelector('#yearCaption'),sourceStatus=document.querySelector('#sourceStatus');
+const history={1992:[28,1,'DMSP-OLS / HISTORICAL','EARLY GLOBAL SATELLITE RECORD'],2000:[35.5,1.32,'DMSP-OLS / HISTORICAL','URBAN CORRIDORS EXPAND'],2010:[46.7,1.72,'DMSP-OLS / HISTORICAL','METROPOLITAN FOOTPRINTS CONNECT'],2012:[51.2,1.89,'VIIRS / BLACK MARBLE','VIIRS ERA BEGINS'],2016:[60.8,2.2,'VIIRS / BLACK MARBLE','LUMINOUS NETWORKS INTENSIFY'],2020:[68.6,2.53,'VIIRS / BLACK MARBLE','A BRIGHTER PLANETARY NIGHT'],2026:[74.8,2.86,'VIIRS / BLACK MARBLE*','CURRENT SCENARIO VIEW']};function nearest(y){return Object.keys(history).map(Number).reduce((a,b)=>Math.abs(b-y)<Math.abs(a-y)?b:a)}function yearUpdate(){const y=+yearSlider.value,k=nearest(y),d=history[k],t=(y-1992)/34;yearReadout.textContent=y;timelineYear.textContent=y;yearCaption.textContent=y===k?d[3]:`INTERPOLATED · NEAREST REFERENCE ${k}`;indexReadout.textContent=d[0].toFixed(1);statNumber.textContent=d[1].toFixed(1)+'×';observationLabel.textContent=d[2];observationYear.textContent=y;sourceStatus.textContent=k>=2012?'VIIRS / BLACK MARBLE':'DMSP-OLS / HISTORICAL';nightLayer.material.opacity=.30+t*.52;uniforms.uNight.value=.25+t*.68;cityPoints.forEach(p=>p.material.opacity=.35+t*.55)}yearSlider.addEventListener('input',yearUpdate);yearUpdate();
 
-const starsGeo = new THREE.BufferGeometry();
-const starCount = 1800;
-const starPositions = new Float32Array(starCount*3);
-for(let i=0;i<starCount;i++){
-  const r=28, theta=Math.random()*Math.PI*2, phi=Math.acos(2*Math.random()-1);
-  starPositions[i*3]=r*Math.sin(phi)*Math.cos(theta);
-  starPositions[i*3+1]=r*Math.sin(phi)*Math.sin(theta);
-  starPositions[i*3+2]=r*Math.cos(phi);
-}
-starsGeo.setAttribute('position',new THREE.BufferAttribute(starPositions,3));
-scene.add(new THREE.Points(starsGeo,new THREE.PointsMaterial({color:0x9da6a2,size:.035,sizeAttenuation:true,transparent:true,opacity:.72})));
-
-const earth = new THREE.Mesh(new THREE.SphereGeometry(1.65,96,96),new THREE.MeshStandardMaterial({color:0x283d48,roughness:1,metalness:0}));
-earthGroup.add(earth);
-
-// Stylized continental land masses: generated from many geographic-ish blobs.
-const land = new THREE.Group(); earthGroup.add(land);
-const cityPoints=[];
-const regions=[
-  [28,77,1.0],[19,73,.85],[13,77,.62],[22,88,.72],[23,72,.58],[30,78,.5],
-  [51,0,.95],[48,16,.9],[41,29,.72],[40,-74,1.0],[34,-118,.9],[35,139,.95],[31,121,.95],[22,114,.75],
-  [-23,-46,.95],[-34,18,.55],[-1,37,.52],[6,3,.62],[-33,151,.6],[37,-122,.7]
-];
-function latLon(lat,lon,r=1.67){
- const phi=(90-lat)*Math.PI/180, theta=(lon+180)*Math.PI/180;
- return new THREE.Vector3(-r*Math.sin(phi)*Math.cos(theta),r*Math.cos(phi),r*Math.sin(phi)*Math.sin(theta));
-}
-regions.forEach(([lat,lon,s])=>{
- const p=latLon(lat,lon,1.68);
- const dot=new THREE.Mesh(new THREE.SphereGeometry(.035+s*.012,10,10),new THREE.MeshBasicMaterial({color:0xffb347,transparent:true,opacity:.35}));
- dot.position.copy(p); dot.lookAt(0,0,0); earthGroup.add(dot); cityPoints.push(dot);
-});
-
-// Atmosphere shell.
-const atmosphere=new THREE.Mesh(new THREE.SphereGeometry(1.72,64,64),new THREE.MeshBasicMaterial({color:0x78a7b5,transparent:true,opacity:.075,side:THREE.BackSide,blending:THREE.AdditiveBlending}));
-earthGroup.add(atmosphere);
-
-// Night-light particles projected around the globe.
-const lightGeo=new THREE.BufferGeometry();
-const lp=[]; const colors=[];
-for(let i=0;i<850;i++){
- const lat=(Math.random()*140)-70, lon=Math.random()*360-180;
- const p=latLon(lat,lon,1.695); lp.push(p.x,p.y,p.z); colors.push(1,.55+.35*Math.random(),.18);
-}
-lightGeo.setAttribute('position',new THREE.Float32BufferAttribute(lp,3));
-lightGeo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
-const lightMat=new THREE.PointsMaterial({size:.018,vertexColors:true,transparent:true,opacity:.8,blending:THREE.AdditiveBlending,sizeAttenuation:true});
-const lights=new THREE.Points(lightGeo,lightMat); earthGroup.add(lights);
-
-const sun=new THREE.DirectionalLight(0xdde9e8,2.2); sun.position.set(-4,2,5); scene.add(sun);
-scene.add(new THREE.AmbientLight(0x233137,.32));
-
-let targetRotX=.16,targetRotY=-.75,rotX=.16,rotY=-.75,scale=1;
-let dragging=false,lastX=0,lastY=0;
-canvas.addEventListener('pointerdown',e=>{dragging=true;lastX=e.clientX;lastY=e.clientY;canvas.setPointerCapture(e.pointerId)});
-canvas.addEventListener('pointerup',()=>dragging=false);
-canvas.addEventListener('pointermove',e=>{if(!dragging)return;targetRotY+=(e.clientX-lastX)*.006;targetRotX+=(e.clientY-lastY)*.004;targetRotX=Math.max(-.8,Math.min(.8,targetRotX));lastX=e.clientX;lastY=e.clientY});
-canvas.addEventListener('wheel',e=>{scale=Math.max(.78,Math.min(1.25,scale-e.deltaY*.0005))},{passive:true});
-
-function animate(){requestAnimationFrame(animate);rotX+=(targetRotX-rotX)*.06;rotY+=(targetRotY-rotY)*.06;earthGroup.rotation.x=rotX;earthGroup.rotation.y=rotY;group.scale.setScalar(scale);lights.rotation.y+=.0007;renderer.render(scene,camera)}
-animate();
-
-addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.8))});
-
-const yearSlider=document.querySelector('#yearSlider');
-const yearReadout=document.querySelector('#yearReadout');
-const timelineYear=document.querySelector('#timelineYear');
-const indexReadout=document.querySelector('#indexReadout');
-const statNumber=document.querySelector('#statNumber');
-function yearUpdate(){const y=+yearSlider.value;const t=(y-1992)/(2026-1992);yearReadout.textContent=y;timelineYear.textContent=y;const idx=(31.8+43*t).toFixed(1);indexReadout.textContent=idx;statNumber.textContent=(1+2.2*t).toFixed(1)+'×';lights.material.opacity=.12+.72*t;cityPoints.forEach((p,i)=>p.material.opacity=.18+.5*t)}
-yearSlider.addEventListener('input',yearUpdate);yearUpdate();
-
-const regionData={GLOBAL:['74.8','+214%','GLB-00','A global view of artificial illumination. Select a region to move from planetary scale to local patterns.'],INDIA:['82.1','+268%','IND-91','A dense network of urban illumination across one of the fastest-growing observation regions.'],EUROPE:['78.4','+161%','EUR-44','Dense urban corridors create a continuous luminous footprint across much of the continent.'],'NORTH AMERICA':['76.9','+184%','NAM-07','Large metropolitan clusters and connected road networks form broad night-light signatures.'],'EAST ASIA':['89.2','+301%','EAS-52','Some of the most intense and extensive urban illumination patterns are concentrated here.'],AFRICA:['42.6','+126%','AFR-18','Lower aggregate illumination masks rapidly growing urban centers and local changes.']};
-const regionTitle=document.querySelector('#regionTitle'),regionIndex=document.querySelector('#regionIndex'),regionChange=document.querySelector('#regionChange'),regionCode=document.querySelector('#regionCode'),regionCopy=document.querySelector('#regionCopy'),regionReadout=document.querySelector('#regionReadout');
-document.querySelectorAll('#regionList button').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('#regionList button').forEach(b=>b.classList.remove('active'));btn.classList.add('active');const d=regionData[btn.dataset.region];regionTitle.textContent=btn.dataset.region;regionReadout.textContent=btn.dataset.region;regionIndex.textContent=d[0];regionChange.textContent=d[1];regionCode.textContent=d[2];regionCopy.textContent=d[3]}));
-
-const pollutionSlider=document.querySelector('#pollutionSlider'),pollutionValue=document.querySelector('#pollutionValue');
-pollutionSlider.addEventListener('input',()=>{const v=+pollutionSlider.value;pollutionValue.textContent=v+'%';const opacity=Math.max(.05,1-v/120);scene.children.filter(x=>x.type==='Points').forEach(x=>x.material.opacity=.15+opacity*.7);document.querySelector('.sky-copy p').style.opacity=1-v*.004});
-
-const citySlider=document.querySelector('#citySlider'),cityValue=document.querySelector('#cityValue'),cityLights=document.querySelector('.city-lights'),starsReturn=document.querySelector('.stars-return');
-function cityUpdate(){const v=+citySlider.value;cityValue.textContent=v+'%';cityLights.style.opacity=v/100;starsReturn.style.opacity=(100-v)/100}
-citySlider.addEventListener('input',cityUpdate);cityUpdate();
-document.querySelector('#restoreBtn').addEventListener('click',()=>{citySlider.value=0;cityUpdate()});
-
-document.querySelector('#enterBtn').addEventListener('click',()=>document.querySelector('#earth').scrollIntoView({behavior:'smooth'}));
-document.querySelector('#menuBtn').addEventListener('click',()=>{const scenes=[...document.querySelectorAll('.scene')];const y=scrollY+innerHeight*.55;const next=scenes.find(s=>s.offsetTop>y);(next||scenes[0]).scrollIntoView({behavior:'smooth'})});
-
-const sceneLabel=document.querySelector('#sceneLabel'),progressBar=document.querySelector('#progressBar');
-const io=new IntersectionObserver(entries=>entries.forEach(e=>{if(e.isIntersecting){const n=e.target.dataset.scene;sceneLabel.textContent=n+' / 08';progressBar.style.width=(+n/8*100)+'%'}}),{threshold:.35});
-document.querySelectorAll('.scene').forEach(s=>io.observe(s));
-
-const soundToggle=document.querySelector('#soundToggle');soundToggle.addEventListener('click',()=>{const span=soundToggle.querySelector('span');span.textContent=span.textContent==='OFF'?'ON':'OFF'});
+const regionData={GLOBAL:['74.8','+214%','GLB-00','Global composite view of artificial illumination.'],INDIA:['82.1','+268%','IND-91','A dense network of urban illumination across the subcontinent.'],EUROPE:['78.4','+161%','EUR-44','Dense urban corridors create a connected luminous footprint.'],'NORTH AMERICA':['76.9','+184%','NAM-07','Metropolitan clusters and road networks form broad signatures.'],'EAST ASIA':['89.2','+301%','EAS-52','Some of the most intense urban illumination is concentrated here.'],AFRICA:['42.6','+126%','AFR-18','Lower aggregate illumination masks rapidly growing urban centers.']};
+const rTitle=document.querySelector('#regionTitle'),rIndex=document.querySelector('#regionIndex'),rChange=document.querySelector('#regionChange'),rCode=document.querySelector('#regionCode'),rCopy=document.querySelector('#regionCopy'),rRead=document.querySelector('#regionReadout');function focusRegion(n){const d=regionData[n];rTitle.textContent=n;rRead.textContent=n;rIndex.textContent=d[0];rChange.textContent=d[1];rCode.textContent=d[2];rCopy.textContent=d[3];const f={INDIA:[.18,-.85],EUROPE:[.48,-.12],'NORTH AMERICA':[.22,1.12],'EAST ASIA':[.2,-2.28],AFRICA:[-.1,-.42],GLOBAL:[.12,-.82]}[n];trx=f[0];tryy=f[1];ts=n==='GLOBAL'?1:1.18;document.querySelector('#selectedRegion').textContent=n}document.querySelectorAll('#regionList button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('#regionList button').forEach(x=>x.classList.remove('active'));b.classList.add('active');focusRegion(b.dataset.region)}));
+const cityList=document.querySelector('#cityList');cityData.forEach(([name,lat,lon,code,index])=>{const b=document.createElement('button');b.innerHTML=`<span>${name.toUpperCase()}</span><small>${code} · ${index}</small>`;b.addEventListener('click',()=>{trx=Math.max(-.65,Math.min(.65,lat/90*.45));tryy=-((lon+180)/180)*Math.PI+Math.PI;ts=1.36;document.querySelector('#cityName').textContent=name.toUpperCase();document.querySelector('#cityCoords').textContent=`${Math.abs(lat).toFixed(4)}° ${lat>=0?'N':'S'} / ${Math.abs(lon).toFixed(4)}° ${lon>=0?'E':'W'}`;document.querySelector('#cityIndex').textContent=index;document.querySelector('#cityCode').textContent=code});cityList.appendChild(b)});
+const pollutionSlider=document.querySelector('#pollutionSlider'),pollutionValue=document.querySelector('#pollutionValue');function pollutionUpdate(){const v=+pollutionSlider.value,n=1-v/100;pollutionValue.textContent=v+'%';stars.material.opacity=.15+n*.72;restoreStars.material.opacity=n*.32;document.querySelector('#skyMode').textContent=v<20?'NATURAL NIGHT':v<65?'SUBURBAN SKY':'CITY SKY'}pollutionSlider.addEventListener('input',pollutionUpdate);pollutionUpdate();
+const citySlider=document.querySelector('#citySlider'),cityValue=document.querySelector('#cityValue'),cityLights=document.querySelector('.city-lights'),starsReturn=document.querySelector('.stars-return');function cityUpdate(){const v=+citySlider.value;cityValue.textContent=v+'%';cityLights.style.opacity=v/100;starsReturn.style.opacity=(100-v)/100;restoreStars.material.opacity=(100-v)/100*.6;nightLayer.material.opacity=.18+v/100*.66;document.querySelector('#restoreState').textContent=v===0?'NATURAL NIGHT':v<40?'REDUCED LIGHTING':'ARTIFICIAL LIGHT'}citySlider.addEventListener('input',cityUpdate);cityUpdate();document.querySelector('#restoreBtn').addEventListener('click',()=>{citySlider.value=citySlider.value>0?0:100;cityUpdate()});
+document.querySelector('#enterBtn').addEventListener('click',()=>document.querySelector('#earth').scrollIntoView({behavior:'smooth'}));document.querySelector('#menuBtn').addEventListener('click',()=>{const y=scrollY+innerHeight*.55,next=[...document.querySelectorAll('.scene')].find(s=>s.offsetTop>y);(next||document.querySelector('.scene')).scrollIntoView({behavior:'smooth'})});
+const sceneLabel=document.querySelector('#sceneLabel'),progressBar=document.querySelector('#progressBar');const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){const n=e.target.dataset.scene;sceneLabel.textContent=n+' / 08';progressBar.style.width=(+n/8*100)+'%';e.target.classList.add('scene-visible')}}),{threshold:.32});document.querySelectorAll('.scene').forEach(s=>io.observe(s));
+const soundToggle=document.querySelector('#soundToggle');soundToggle.addEventListener('click',()=>{const s=soundToggle.querySelector('span'),on=s.textContent==='OFF';s.textContent=on?'ON':'OFF';document.body.classList.toggle('ambience-on',on)});
