@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#030404" />
+  <meta name="description" content="AFTER DARK — an immersive visualization of Earth's disappearing night and global light pollution." />
+  <title>AFTER DARK — The Night Is Disappearing</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="space"></canvas>
+    <div class="vignette"></div>
+    <div class="scanlines"></div>
+
+    <header class="topbar hud">
+      <a class="brand" href="#top" aria-label="After Dark home">AFTER DARK<span>/</span></a>
+      <div class="mission">PLANETARY NIGHT OBSERVATION <i></i></div>
+      <button class="sound-btn" id="soundToggle" aria-label="Toggle interface ambience">AMBIENCE <span>OFF</span></button>
+    </header>
+
+    <main id="top">
+      <section class="hero scene" data-scene="01">
+        <div class="hud-corner corner-tl">OBS / 01<br>EARTH · NIGHT-SIDE</div>
+        <div class="hud-corner corner-tr">SYSTEM <b>ONLINE</b><br>LAT <span id="latReadout">—</span></div>
+        <div class="hero-copy">
+          <p class="eyebrow">A PLANETARY OBSERVATION</p>
+          <h1>THE NIGHT<br>IS <em>DISAPPEARING.</em></h1>
+          <p class="lede">Explore how artificial light has transformed Earth's darkness — and what remains when we turn it off.</p>
+          <button class="enter-btn" id="enterBtn"><span>ENTER THE NIGHT</span><b>↓</b></button>
+        </div>
+        <div class="hero-meta hud">
+          <span>DATASET / NIGHT-LIGHT OBSERVATION</span>
+          <span>01 / 08</span>
+        </div>
+      </section>
+
+      <section class="globe-section scene" id="earth" data-scene="02">
+        <div class="section-heading">
+          <span class="index">02 — EARTH AT NIGHT</span>
+          <h2>We turned the night<br>into a <em>signal.</em></h2>
+        </div>
+        <div class="globe-stage">
+          <div class="telemetry left hud-panel">
+            <span>PLANETARY READOUT</span>
+            <strong>EARTH</strong>
+            <dl>
+              <div><dt>YEAR</dt><dd id="yearReadout">2026</dd></div>
+              <div><dt>NIGHT LIGHT</dt><dd id="indexReadout">74.8</dd></div>
+              <div><dt>MODE</dt><dd id="modeReadout">GLOBAL</dd></div>
+            </dl>
+          </div>
+          <div class="globe-wrap">
+            <div class="orbit-ring"></div>
+            <div class="globe-hint">DRAG TO ROTATE · SCROLL TO SCALE</div>
+          </div>
+          <div class="telemetry right hud-panel">
+            <span>OBSERVATION</span>
+            <strong id="regionReadout">GLOBAL</strong>
+            <div class="mini-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <small>ARTIFICIAL ILLUMINATION<br>RELATIVE INDEX</small>
+          </div>
+        </div>
+        <div class="timeline" id="timeline">
+          <div class="timeline-label"><span>1992</span><span id="timelineYear">2026</span><span>2026</span></div>
+          <input type="range" min="1992" max="2026" value="2026" id="yearSlider" aria-label="Night light observation year">
+          <div class="ticks"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+      </section>
+
+      <section class="data-section scene" data-scene="03">
+        <div class="split-head"><span class="index">03 — THE LIGHTS</span><span class="mono">SATELLITE OBSERVATION / GLOBAL</span></div>
+        <div class="big-stat"><span id="statNumber">3.2×</span><p>more artificial night<br>light than the early<br>satellite record</p></div>
+        <div class="data-grid">
+          <article><span>SKY GLOW</span><strong>VISIBLE</strong><p>Light scattered through the atmosphere brightens the sky far beyond city limits.</p></article>
+          <article><span>GLARE</span><strong>HIGH</strong><p>Excessive brightness reduces contrast and can make it harder to see what is around us.</p></article>
+          <article><span>TRESPASS</span><strong>SPREADING</strong><p>Artificial light crosses property lines, habitats and places where darkness is part of the environment.</p></article>
+          <article><span>CLUTTER</span><strong>URBAN</strong><p>Too many bright sources compete for attention and turn useful illumination into visual noise.</p></article>
+        </div>
+      </section>
+
+      <section class="explore-section scene" id="explore" data-scene="04">
+        <div class="split-head"><span class="index">04 — FOLLOW THE DATA</span><span class="mono">SELECT A REGION</span></div>
+        <div class="explore-layout">
+          <div class="region-list" id="regionList">
+            <button data-region="GLOBAL" class="active">GLOBAL <span>74.8</span></button>
+            <button data-region="INDIA">INDIA <span>82.1</span></button>
+            <button data-region="EUROPE">EUROPE <span>78.4</span></button>
+            <button data-region="NORTH AMERICA">N. AMERICA <span>76.9</span></button>
+            <button data-region="EAST ASIA">EAST ASIA <span>89.2</span></button>
+            <button data-region="AFRICA">AFRICA <span>42.6</span></button>
+          </div>
+          <div class="region-card hud-panel">
+            <div class="card-top"><span>REGION / LIVE VIEW</span><span id="regionCode">GLB-00</span></div>
+            <h3 id="regionTitle">GLOBAL</h3>
+            <div class="metric"><span>NIGHT LIGHT INDEX</span><strong id="regionIndex">74.8</strong></div>
+            <div class="metric"><span>CHANGE SINCE 1992</span><strong id="regionChange">+214%</strong></div>
+            <div class="metric"><span>OBSERVATION MODE</span><strong>VIIRS / COMPOSITE</strong></div>
+            <p id="regionCopy">A global view of artificial illumination. Select a region to move from planetary scale to local patterns.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="sky-section scene" data-scene="05">
+        <div class="sky-copy"><span class="index">05 — WHAT WE'RE LOSING</span><h2>For most of human history,<br><em>this was the night.</em></h2><p>Darkness is not empty. It is habitat, orientation, rhythm, memory — and a window into the universe.</p></div>
+        <div class="sky-control hud-panel"><span>LIGHT POLLUTION</span><output id="pollutionValue">0%</output><input id="pollutionSlider" type="range" min="0" max="100" value="0" aria-label="Light pollution level"><small>DRAG TO BRIGHTEN THE SKY</small></div>
+        <div class="constellation-labels"><span>ORION</span><span>POLARIS</span><span>PLEIADES</span></div>
+      </section>
+
+      <section class="impact-section scene" data-scene="06" id="impact">
+        <div class="split-head"><span class="index">06 — MORE THAN A VIEW</span><span class="mono">ECOLOGICAL SIGNAL</span></div>
+        <div class="impact-grid">
+          <article class="impact"><div class="impact-no">01</div><h3>MIGRATION</h3><p>Many nocturnal species use darkness as a navigational cue. Artificial light can interrupt routes and behavior.</p></article>
+          <article class="impact"><div class="impact-no">02</div><h3>WILDLIFE</h3><p>Birds, insects, turtles and other organisms evolved around predictable cycles of light and dark.</p></article>
+          <article class="impact"><div class="impact-no">03</div><h3>HUMAN RHYTHMS</h3><p>Our bodies also respond to light. Night is part of the environmental signal that shapes sleep and circadian timing.</p></article>
+        </div>
+      </section>
+
+      <section class="restore-section scene" data-scene="07" id="restore">
+        <div class="restore-copy"><span class="index">07 — RESTORE THE NIGHT</span><h2>Turn the<br><em>city off.</em></h2><p>Explore a simple scenario: reduce unnecessary illumination and watch the night return.</p></div>
+        <div class="restore-visual" id="restoreVisual"><div class="city-lights"></div><div class="stars-return"></div></div>
+        <div class="restore-control hud-panel"><span>CITY LIGHTING</span><output id="cityValue">100%</output><input id="citySlider" type="range" min="0" max="100" value="100" aria-label="City lighting level"><button id="restoreBtn">RESTORE DARKNESS</button></div>
+      </section>
+
+      <section class="action-section scene" data-scene="08" id="action">
+        <div class="action-mark">AD</div>
+        <span class="index">08 — TAKE ACTION</span>
+        <h2>The night can<br><em>return.</em></h2>
+        <p>Better shielding. Warmer, targeted light. Adaptive systems. Thoughtful planning. Small changes can protect darkness without giving up the benefits of illumination.</p>
+        <div class="action-links"><a href="#restore">EXPLORE RESTORATION <span>↗</span></a><a href="#explore">EXPLORE THE DATA <span>↗</span></a></div>
+        <footer><span>AFTER DARK / OPEN VISUALIZATION</span><span>DATA SOURCES: NASA / NOAA / EARTH OBSERVATION</span><span>2026</span></footer>
+      </section>
+    </main>
+
+    <nav class="progress-nav hud" aria-label="Page sections">
+      <span id="sceneLabel">01 / 08</span>
+      <div class="progress"><i id="progressBar"></i></div>
+      <button id="menuBtn" aria-label="Scroll to next section">NEXT ↓</button>
+    </nav>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
