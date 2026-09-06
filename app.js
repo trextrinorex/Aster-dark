@@ -262,28 +262,41 @@ cityData.forEach(([name, lat, lon, code, index]) => {
 scene.add(new THREE.DirectionalLight(0xf0f4f4, 1.9));
 scene.add(new THREE.AmbientLight(0x152028, 0.28));
 
-/* ---------- Interaction ---------- */
+/* ---------- Interaction (faster drag / touch) ---------- */
 let rx = 0.14, ry = -0.9, trx = rx, tryy = ry, scale = 1, ts = 1;
 let drag = false, lx = 0, ly = 0;
 let autoRotate = true;
+let pointerType = 'mouse';
+
+// Higher sensitivity for touch/fingers; still snappy for mouse
+function dragSensitivity() {
+  return pointerType === 'touch' ? 0.018 : 0.011;
+}
+
+canvas.style.touchAction = 'none'; // prevent page scroll while dragging Earth
 
 canvas.addEventListener('pointerdown', e => {
   drag = true;
   autoRotate = false;
+  pointerType = e.pointerType || 'mouse';
   lx = e.clientX;
   ly = e.clientY;
   canvas.setPointerCapture(e.pointerId);
 });
+
 canvas.addEventListener('pointerup', () => { drag = false; });
 canvas.addEventListener('pointercancel', () => { drag = false; });
+
 canvas.addEventListener('pointermove', e => {
   if (!drag) return;
-  tryy += (e.clientX - lx) * 0.0052;
-  trx += (e.clientY - ly) * 0.0038;
-  trx = Math.max(-0.8, Math.min(0.8, trx));
+  const sens = dragSensitivity();
+  tryy += (e.clientX - lx) * sens;
+  trx += (e.clientY - ly) * sens * 0.75;
+  trx = Math.max(-0.85, Math.min(0.85, trx));
   lx = e.clientX;
   ly = e.clientY;
 });
+
 canvas.addEventListener('wheel', e => {
   ts = Math.max(0.7, Math.min(1.5, ts - e.deltaY * 0.0005));
 }, { passive: true });
@@ -304,9 +317,11 @@ function animate() {
   if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
     if (autoRotate && !drag) tryy += 0.0012;
 
-    rx += (trx - rx) * 0.06;
-    ry += (tryy - ry) * 0.06;
-    scale += (ts - scale) * 0.06;
+    // Snappier follow so drag feels immediate
+    const follow = drag ? 0.22 : 0.1;
+    rx += (trx - rx) * follow;
+    ry += (tryy - ry) * follow;
+    scale += (ts - scale) * 0.1;
     scrollProgress += (scrollTarget - scrollProgress) * 0.04;
 
     earthGroup.rotation.x = rx + scrollProgress * 0.06;
