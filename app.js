@@ -1,7 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 
 /* ============================================================
-   AFTER DARK — Enhanced Earth + Observation System
+   AFTER DARK — Cinematic Earth + Interactive Observation
    ============================================================ */
 
 const canvas = document.querySelector('#space');
@@ -11,15 +11,15 @@ const renderer = new THREE.WebGLRenderer({
   alpha: true,
   powerPreference: 'high-performance'
 });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.85));
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 1.15;
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 100);
-camera.position.set(0, 0, 5.15);
+const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.1, 120);
+camera.position.set(0, 0.15, 4.85);
 
 const earthGroup = new THREE.Group();
 scene.add(earthGroup);
@@ -27,91 +27,74 @@ scene.add(earthGroup);
 const loader = new THREE.TextureLoader();
 loader.setCrossOrigin('anonymous');
 
-/* ---------- High-quality textures (CORS-friendly) ---------- */
-const dayMap = loader.load(
-  'https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-blue-marble.jpg',
-  undefined,
-  undefined,
-  () => console.warn('Day texture failed to load')
-);
+/* Reliable public textures */
+const TEX = {
+  day: 'https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-blue-marble.jpg',
+  night: 'https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-night.jpg',
+  topo: 'https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-topology.png',
+  clouds: 'https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-water.png'
+};
+
+const dayMap = loader.load(TEX.day);
 dayMap.colorSpace = THREE.SRGBColorSpace;
-
-const nightMap = loader.load(
-  'https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-night.jpg',
-  undefined,
-  undefined,
-  () => console.warn('Night texture failed to load')
-);
+const nightMap = loader.load(TEX.night);
 nightMap.colorSpace = THREE.SRGBColorSpace;
+const topoMap = loader.load(TEX.topo);
+const cloudMap = loader.load(TEX.clouds);
 
-const topoMap = loader.load(
-  'https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-topology.png'
-);
-
-/* ---------- Stars ---------- */
-const starGeo = new THREE.BufferGeometry();
-const starCount = matchMedia('(max-width:800px)').matches ? 1400 : 3200;
-const starPos = new Float32Array(starCount * 3);
-for (let i = 0; i < starCount; i++) {
-  const r = 28 + Math.random() * 22;
-  const t = Math.random() * Math.PI * 2;
-  const p = Math.acos(2 * Math.random() - 1);
-  starPos[i * 3] = r * Math.sin(p) * Math.cos(t);
-  starPos[i * 3 + 1] = r * Math.sin(p) * Math.sin(t);
-  starPos[i * 3 + 2] = r * Math.cos(p);
+/* ---------- Dense starfield ---------- */
+function makeStars(count, size, color, opacity) {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const r = 30 + Math.random() * 40;
+    const t = Math.random() * Math.PI * 2;
+    const p = Math.acos(2 * Math.random() - 1);
+    pos[i * 3] = r * Math.sin(p) * Math.cos(t);
+    pos[i * 3 + 1] = r * Math.sin(p) * Math.sin(t);
+    pos[i * 3 + 2] = r * Math.cos(p);
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  return new THREE.Points(
+    geo,
+    new THREE.PointsMaterial({
+      color,
+      size,
+      transparent: true,
+      opacity,
+      sizeAttenuation: true,
+      depthWrite: false
+    })
+  );
 }
-starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
 
-const stars = new THREE.Points(
-  starGeo,
-  new THREE.PointsMaterial({
-    color: 0xc8d2cf,
-    size: 0.026,
-    transparent: true,
-    opacity: 0.78,
-    sizeAttenuation: true,
-    depthWrite: false
-  })
-);
+const starCount = matchMedia('(max-width:800px)').matches ? 1800 : 4200;
+const stars = makeStars(starCount, 0.03, 0xd0d8d4, 0.85);
 scene.add(stars);
 
-const restoreStars = new THREE.Points(
-  starGeo.clone(),
-  new THREE.PointsMaterial({
-    color: 0xdce8ff,
-    size: 0.038,
-    transparent: true,
-    opacity: 0,
-    sizeAttenuation: true,
-    depthWrite: false
-  })
-);
+const restoreStars = makeStars(starCount, 0.045, 0xe8f0ff, 0);
 scene.add(restoreStars);
 
-/* ---------- Earth core with day/night blend shader ---------- */
-const EARTH_RADIUS = 1.64;
+/* ---------- EARTH (strong day/night blend) ---------- */
+const R = 1.58;
 
 const earthUniforms = {
   dayTexture: { value: dayMap },
   nightTexture: { value: nightMap },
   topoTexture: { value: topoMap },
-  sunDirection: { value: new THREE.Vector3(-0.55, 0.25, 0.8).normalize() },
-  nightIntensity: { value: 1.15 },
-  atmosphereColor: { value: new THREE.Color(0x6ba3b8) }
+  sunDirection: { value: new THREE.Vector3(-0.6, 0.2, 0.75).normalize() },
+  nightIntensity: { value: 1.8 },
+  time: { value: 0 }
 };
 
-const earthMaterial = new THREE.ShaderMaterial({
+const earthMat = new THREE.ShaderMaterial({
   uniforms: earthUniforms,
   vertexShader: `
     varying vec2 vUv;
     varying vec3 vNormal;
-    varying vec3 vWorldPos;
-
     void main() {
       vUv = uv;
       vNormal = normalize(normalMatrix * normal);
-      vec4 worldPos = modelMatrix * vec4(position, 1.0);
-      vWorldPos = worldPos.xyz;
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }
   `,
@@ -121,105 +104,102 @@ const earthMaterial = new THREE.ShaderMaterial({
     uniform sampler2D topoTexture;
     uniform vec3 sunDirection;
     uniform float nightIntensity;
-    uniform vec3 atmosphereColor;
+    uniform float time;
 
     varying vec2 vUv;
     varying vec3 vNormal;
-    varying vec3 vWorldPos;
 
     void main() {
-      vec3 dayColor = texture2D(dayTexture, vUv).rgb;
-      vec3 nightColor = texture2D(nightTexture, vUv).rgb;
-      float elevation = texture2D(topoTexture, vUv).r;
+      vec3 dayCol = texture2D(dayTexture, vUv).rgb;
+      vec3 nightCol = texture2D(nightTexture, vUv).rgb;
+      float elev = texture2D(topoTexture, vUv).r;
 
-      // Soften day colors slightly for cinematic look
-      dayColor = mix(dayColor, dayColor * vec3(0.92, 0.95, 1.0), 0.25);
+      // Cinematic day grading
+      dayCol *= vec3(0.9, 0.95, 1.05);
+      dayCol = pow(dayCol, vec3(0.95));
 
-      // Boost night city lights
-      nightColor *= nightIntensity * 1.55;
+      // Strong night lights
+      nightCol = pow(nightCol, vec3(0.85));
+      nightCol *= nightIntensity * 2.2;
 
-      // Lighting term (day/night transition)
-      vec3 normal = normalize(vNormal);
-      float NdotL = dot(normal, sunDirection);
+      vec3 N = normalize(vNormal);
+      float ndl = dot(N, sunDirection);
 
-      // Smooth terminator
-      float dayFactor = smoothstep(-0.12, 0.28, NdotL);
+      // Soft but clear terminator
+      float dayF = smoothstep(-0.08, 0.35, ndl);
 
-      // Mix day and night
-      vec3 color = mix(nightColor, dayColor, dayFactor);
+      vec3 color = mix(nightCol, dayCol, dayF);
 
-      // Subtle topographic shading
-      color *= 0.88 + elevation * 0.22;
+      // Topography
+      color *= 0.85 + elev * 0.28;
 
-      // Rim / atmosphere contribution on the day side
-      float rim = 1.0 - max(dot(normal, vec3(0.0, 0.0, 1.0)), 0.0);
-      color += dayFactor * pow(rim, 3.2) * atmosphereColor * 0.18;
+      // Atmosphere rim (day)
+      float rim = pow(1.0 - max(dot(N, vec3(0.0, 0.0, 1.0)), 0.0), 2.8);
+      color += dayF * rim * vec3(0.35, 0.55, 0.75) * 0.35;
 
-      // Soft glow on night side cities
-      float nightGlow = (1.0 - dayFactor) * length(nightColor) * 0.15;
-      color += vec3(1.0, 0.72, 0.35) * nightGlow;
+      // City light bloom on night side
+      float city = length(nightCol) * (1.0 - dayF);
+      color += vec3(1.0, 0.65, 0.25) * city * 0.35;
+
+      // Subtle pulse on brightest lights
+      float pulse = 0.97 + 0.03 * sin(time * 2.0 + vUv.x * 20.0);
+      color = mix(color, color * pulse, (1.0 - dayF) * 0.4);
 
       gl_FragColor = vec4(color, 1.0);
     }
   `
 });
 
-const earth = new THREE.Mesh(
-  new THREE.SphereGeometry(EARTH_RADIUS, 96, 96),
-  earthMaterial
-);
+const earth = new THREE.Mesh(new THREE.SphereGeometry(R, 128, 128), earthMat);
 earthGroup.add(earth);
 
-/* ---------- Atmosphere (fresnel) ---------- */
-const atmosphere = new THREE.Mesh(
-  new THREE.SphereGeometry(EARTH_RADIUS * 1.075, 80, 80),
+/* Atmosphere */
+const atmos = new THREE.Mesh(
+  new THREE.SphereGeometry(R * 1.085, 64, 64),
   new THREE.ShaderMaterial({
     transparent: true,
     side: THREE.BackSide,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     uniforms: {
-      uColor: { value: new THREE.Color(0x6d9eaa) },
-      uIntensity: { value: 0.28 }
+      uColor: { value: new THREE.Color(0x5a9bb0) },
+      uPower: { value: 0.32 }
     },
     vertexShader: `
-      varying vec3 vNormal;
-      varying vec3 vView;
+      varying vec3 vN; varying vec3 vV;
       void main() {
-        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-        vView = normalize(-mvPos.xyz);
-        vNormal = normalize(normalMatrix * normal);
-        gl_Position = projectionMatrix * mvPos;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vV = normalize(-mv.xyz);
+        vN = normalize(normalMatrix * normal);
+        gl_Position = projectionMatrix * mv;
       }
     `,
     fragmentShader: `
-      uniform vec3 uColor;
-      uniform float uIntensity;
-      varying vec3 vNormal;
-      varying vec3 vView;
+      uniform vec3 uColor; uniform float uPower;
+      varying vec3 vN; varying vec3 vV;
       void main() {
-        float rim = pow(1.0 - max(dot(vNormal, vView), 0.0), 3.6);
-        gl_FragColor = vec4(uColor, rim * uIntensity);
+        float r = pow(1.0 - max(dot(vN, vV), 0.0), 3.4);
+        gl_FragColor = vec4(uColor, r * uPower);
       }
     `
   })
 );
-earthGroup.add(atmosphere);
+earthGroup.add(atmos);
 
-/* ---------- Subtle cloud layer ---------- */
+/* Clouds */
 const clouds = new THREE.Mesh(
-  new THREE.SphereGeometry(EARTH_RADIUS * 1.012, 72, 72),
+  new THREE.SphereGeometry(R * 1.015, 80, 80),
   new THREE.MeshBasicMaterial({
-    map: loader.load('https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-water.png'),
+    map: cloudMap,
     transparent: true,
-    opacity: 0.11,
+    opacity: 0.14,
     depthWrite: false,
     blending: THREE.AdditiveBlending
   })
 );
 earthGroup.add(clouds);
 
-/* ---------- City markers ---------- */
+/* City markers with pulse */
 const cityData = [
   ['Delhi', 28.6139, 77.209, 'IND-DEL', 86],
   ['Mumbai', 19.076, 72.8777, 'IND-MUM', 82],
@@ -230,10 +210,14 @@ const cityData = [
   ['Tokyo', 35.6762, 139.6503, 'JPN-TYO', 94],
   ['Shanghai', 31.2304, 121.4737, 'CHN-SHA', 96],
   ['São Paulo', -23.5505, -46.6333, 'BRA-SAO', 84],
-  ['Sydney', -33.8688, 151.2093, 'AUS-SYD', 74]
+  ['Sydney', -33.8688, 151.2093, 'AUS-SYD', 74],
+  ['Cairo', 30.0444, 31.2357, 'EGY-CAI', 71],
+  ['Lagos', 6.5244, 3.3792, 'NGA-LAG', 68],
+  ['Seoul', 37.5665, 126.978, 'KOR-SEL', 90],
+  ['Mexico City', 19.4326, -99.1332, 'MEX-MEX', 80]
 ];
 
-function latLon(lat, lon, r = EARTH_RADIUS * 1.018) {
+function latLon(lat, lon, r = R * 1.02) {
   const phi = (90 - lat) * Math.PI / 180;
   const theta = (lon + 180) * Math.PI / 180;
   return new THREE.Vector3(
@@ -244,90 +228,97 @@ function latLon(lat, lon, r = EARTH_RADIUS * 1.018) {
 }
 
 const cityPoints = [];
+const cityGlows = [];
 cityData.forEach(([name, lat, lon, code, index]) => {
-  const size = 0.018 + index / 6000;
+  const size = 0.016 + index / 7000;
   const mat = new THREE.MeshBasicMaterial({
-    color: 0xffb347,
+    color: 0xffc266,
     transparent: true,
-    opacity: 0.82,
+    opacity: 0.9,
     depthWrite: false
   });
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 10, 10), mat);
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 12, 12), mat);
   mesh.position.copy(latLon(lat, lon));
   mesh.userData = { name, lat, lon, code, index };
   earthGroup.add(mesh);
   cityPoints.push(mesh);
 
-  // Soft glow halo
   const glow = new THREE.Mesh(
-    new THREE.SphereGeometry(size * 2.4, 8, 8),
+    new THREE.SphereGeometry(size * 3.2, 10, 10),
     new THREE.MeshBasicMaterial({
-      color: 0xffaa33,
+      color: 0xff9933,
       transparent: true,
-      opacity: 0.18,
+      opacity: 0.22,
       blending: THREE.AdditiveBlending,
       depthWrite: false
     })
   );
   glow.position.copy(mesh.position);
   earthGroup.add(glow);
+  cityGlows.push(glow);
 });
 
-/* ---------- Lighting ---------- */
-scene.add(new THREE.DirectionalLight(0xe8f0f0, 1.65));
-scene.add(new THREE.AmbientLight(0x1c282c, 0.22));
+/* Lights */
+scene.add(new THREE.DirectionalLight(0xf0f4f4, 1.9));
+scene.add(new THREE.AmbientLight(0x152028, 0.28));
 
 /* ---------- Interaction ---------- */
-let rx = 0.12, ry = -0.82, trx = rx, tryy = ry, scale = 1, ts = 1;
+let rx = 0.14, ry = -0.9, trx = rx, tryy = ry, scale = 1, ts = 1;
 let drag = false, lx = 0, ly = 0;
+let autoRotate = true;
 
 canvas.addEventListener('pointerdown', e => {
   drag = true;
+  autoRotate = false;
   lx = e.clientX;
   ly = e.clientY;
   canvas.setPointerCapture(e.pointerId);
 });
-canvas.addEventListener('pointerup', () => (drag = false));
-canvas.addEventListener('pointercancel', () => (drag = false));
+canvas.addEventListener('pointerup', () => { drag = false; });
+canvas.addEventListener('pointercancel', () => { drag = false; });
 canvas.addEventListener('pointermove', e => {
   if (!drag) return;
-  tryy += (e.clientX - lx) * 0.005;
-  trx += (e.clientY - ly) * 0.0035;
-  trx = Math.max(-0.75, Math.min(0.75, trx));
+  tryy += (e.clientX - lx) * 0.0052;
+  trx += (e.clientY - ly) * 0.0038;
+  trx = Math.max(-0.8, Math.min(0.8, trx));
   lx = e.clientX;
   ly = e.clientY;
 });
-canvas.addEventListener(
-  'wheel',
-  e => {
-    ts = Math.max(0.72, Math.min(1.42, ts - e.deltaY * 0.00045));
-  },
-  { passive: true }
-);
+canvas.addEventListener('wheel', e => {
+  ts = Math.max(0.7, Math.min(1.5, ts - e.deltaY * 0.0005));
+}, { passive: true });
 
 let scrollTarget = 0, scrollProgress = 0;
-addEventListener(
-  'scroll',
-  () => {
-    const max = document.documentElement.scrollHeight - innerHeight;
-    scrollTarget = max ? scrollY / max : 0;
-  },
-  { passive: true }
-);
+addEventListener('scroll', () => {
+  const max = document.documentElement.scrollHeight - innerHeight;
+  scrollTarget = max ? scrollY / max : 0;
+}, { passive: true });
+
+const clock = new THREE.Clock();
 
 function animate() {
   requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  earthUniforms.time.value = t;
 
   if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    rx += (trx - rx) * 0.055;
-    ry += (tryy - ry) * 0.055;
-    scale += (ts - scale) * 0.055;
-    scrollProgress += (scrollTarget - scrollProgress) * 0.035;
+    if (autoRotate && !drag) tryy += 0.0012;
 
-    earthGroup.rotation.x = rx + scrollProgress * 0.08;
-    earthGroup.rotation.y = ry + scrollProgress * 0.65;
-    clouds.rotation.y += 0.00018;
-    stars.rotation.y += 0.00005;
+    rx += (trx - rx) * 0.06;
+    ry += (tryy - ry) * 0.06;
+    scale += (ts - scale) * 0.06;
+    scrollProgress += (scrollTarget - scrollProgress) * 0.04;
+
+    earthGroup.rotation.x = rx + scrollProgress * 0.06;
+    earthGroup.rotation.y = ry + scrollProgress * 0.55;
+    clouds.rotation.y += 0.00022;
+    stars.rotation.y += 0.00004;
+
+    // Gentle city pulse
+    const pulse = 0.75 + 0.25 * Math.sin(t * 2.4);
+    cityGlows.forEach((g, i) => {
+      g.material.opacity = 0.12 + 0.14 * pulse * (0.7 + 0.3 * Math.sin(t + i));
+    });
   }
 
   earthGroup.scale.setScalar(scale);
@@ -339,11 +330,20 @@ addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.85));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 });
 
+/* Resume auto-rotate after idle */
+let idleTimer;
+function resetIdle() {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => { if (!drag) autoRotate = true; }, 6000);
+}
+canvas.addEventListener('pointerup', resetIdle);
+canvas.addEventListener('wheel', resetIdle);
+
 /* ============================================================
-   Data UI — year, regions, cities, pollution, restore
+   Data UI
    ============================================================ */
 
 const yearSlider = document.querySelector('#yearSlider');
@@ -367,9 +367,9 @@ const history = {
 };
 
 function nearest(y) {
-  return Object.keys(history)
-    .map(Number)
-    .reduce((a, b) => (Math.abs(b - y) < Math.abs(a - y) ? b : a));
+  return Object.keys(history).map(Number).reduce((a, b) =>
+    Math.abs(b - y) < Math.abs(a - y) ? b : a
+  );
 }
 
 function yearUpdate() {
@@ -380,20 +380,15 @@ function yearUpdate() {
 
   yearReadout.textContent = y;
   timelineYear.textContent = y;
-  yearCaption.textContent =
-    y === k ? d[3] : `INTERPOLATED · NEAREST REFERENCE ${k}`;
+  yearCaption.textContent = y === k ? d[3] : `INTERPOLATED · NEAREST REFERENCE ${k}`;
   indexReadout.textContent = d[0].toFixed(1);
   statNumber.textContent = d[1].toFixed(1) + '×';
   observationLabel.textContent = d[2];
   observationYear.textContent = y;
-  sourceStatus.textContent =
-    k >= 2012 ? 'VIIRS / BLACK MARBLE' : 'DMSP-OLS / HISTORICAL';
+  sourceStatus.textContent = k >= 2012 ? 'VIIRS / BLACK MARBLE' : 'DMSP-OLS / HISTORICAL';
 
-  // Drive night-light intensity from the historical index
-  earthUniforms.nightIntensity.value = 0.45 + t * 1.15;
-  cityPoints.forEach(p => {
-    p.material.opacity = 0.3 + t * 0.6;
-  });
+  earthUniforms.nightIntensity.value = 0.7 + t * 1.6;
+  cityPoints.forEach(p => { p.material.opacity = 0.35 + t * 0.6; });
 }
 yearSlider.addEventListener('input', yearUpdate);
 yearUpdate();
@@ -435,7 +430,9 @@ function focusRegion(n) {
 
   trx = f[0];
   tryy = f[1];
-  ts = n === 'GLOBAL' ? 1 : 1.18;
+  ts = n === 'GLOBAL' ? 1 : 1.2;
+  autoRotate = false;
+  resetIdle();
   document.querySelector('#selectedRegion').textContent = n;
 }
 
@@ -447,15 +444,17 @@ document.querySelectorAll('#regionList button').forEach(b => {
   });
 });
 
-/* Cities */
+/* Cities list */
 const cityList = document.querySelector('#cityList');
 cityData.forEach(([name, lat, lon, code, index]) => {
   const b = document.createElement('button');
   b.innerHTML = `<span>${name.toUpperCase()}</span><small>${code} · ${index}</small>`;
   b.addEventListener('click', () => {
-    trx = Math.max(-0.65, Math.min(0.65, (lat / 90) * 0.45));
+    trx = Math.max(-0.65, Math.min(0.65, (lat / 90) * 0.5));
     tryy = -((lon + 180) / 180) * Math.PI + Math.PI;
-    ts = 1.36;
+    ts = 1.38;
+    autoRotate = false;
+    resetIdle();
     document.querySelector('#cityName').textContent = name.toUpperCase();
     document.querySelector('#cityCoords').textContent =
       `${Math.abs(lat).toFixed(4)}° ${lat >= 0 ? 'N' : 'S'} / ${Math.abs(lon).toFixed(4)}° ${lon >= 0 ? 'E' : 'W'}`;
@@ -465,7 +464,7 @@ cityData.forEach(([name, lat, lon, code, index]) => {
   cityList.appendChild(b);
 });
 
-/* Pollution slider */
+/* Pollution */
 const pollutionSlider = document.querySelector('#pollutionSlider');
 const pollutionValue = document.querySelector('#pollutionValue');
 
@@ -473,30 +472,27 @@ function pollutionUpdate() {
   const v = +pollutionSlider.value;
   const n = 1 - v / 100;
   pollutionValue.textContent = v + '%';
-  stars.material.opacity = 0.15 + n * 0.72;
-  restoreStars.material.opacity = n * 0.32;
+  stars.material.opacity = 0.12 + n * 0.78;
+  restoreStars.material.opacity = n * 0.4;
   document.querySelector('#skyMode').textContent =
     v < 20 ? 'NATURAL NIGHT' : v < 65 ? 'SUBURBAN SKY' : 'CITY SKY';
 }
 pollutionSlider.addEventListener('input', pollutionUpdate);
 pollutionUpdate();
 
-/* Restore the Night */
+/* Restore */
 const citySlider = document.querySelector('#citySlider');
 const cityValue = document.querySelector('#cityValue');
-const cityLights = document.querySelector('.city-lights');
+const cityLightsEl = document.querySelector('.city-lights');
 const starsReturn = document.querySelector('.stars-return');
 
 function cityUpdate() {
   const v = +citySlider.value;
   cityValue.textContent = v + '%';
-  cityLights.style.opacity = v / 100;
+  cityLightsEl.style.opacity = v / 100;
   starsReturn.style.opacity = (100 - v) / 100;
-  restoreStars.material.opacity = ((100 - v) / 100) * 0.6;
-
-  // Dim the night lights on the globe
-  earthUniforms.nightIntensity.value = 0.25 + (v / 100) * 1.2;
-
+  restoreStars.material.opacity = ((100 - v) / 100) * 0.65;
+  earthUniforms.nightIntensity.value = 0.35 + (v / 100) * 1.7;
   document.querySelector('#restoreState').textContent =
     v === 0 ? 'NATURAL NIGHT' : v < 40 ? 'REDUCED LIGHTING' : 'ARTIFICIAL LIGHT';
 }
@@ -508,7 +504,7 @@ document.querySelector('#restoreBtn').addEventListener('click', () => {
   cityUpdate();
 });
 
-/* Navigation helpers */
+/* Nav */
 document.querySelector('#enterBtn').addEventListener('click', () => {
   document.querySelector('#earth').scrollIntoView({ behavior: 'smooth' });
 });
@@ -519,29 +515,42 @@ document.querySelector('#menuBtn').addEventListener('click', () => {
   (next || document.querySelector('.scene')).scrollIntoView({ behavior: 'smooth' });
 });
 
-/* Scene progress */
+/* Progress */
 const sceneLabel = document.querySelector('#sceneLabel');
 const progressBar = document.querySelector('#progressBar');
-const io = new IntersectionObserver(
-  entries => {
-    entries.forEach(e => {
-      if (e.isIntersecting) {
-        const n = e.target.dataset.scene;
-        sceneLabel.textContent = n + ' / 08';
-        progressBar.style.width = (+n / 8) * 100 + '%';
-        e.target.classList.add('scene-visible');
-      }
-    });
-  },
-  { threshold: 0.32 }
-);
+const io = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      const n = e.target.dataset.scene;
+      sceneLabel.textContent = n + ' / 08';
+      progressBar.style.width = (+n / 8) * 100 + '%';
+      e.target.classList.add('scene-visible');
+    }
+  });
+}, { threshold: 0.28 });
 document.querySelectorAll('.scene').forEach(s => io.observe(s));
 
-/* Ambience toggle */
+/* Sound toggle */
 const soundToggle = document.querySelector('#soundToggle');
 soundToggle.addEventListener('click', () => {
   const s = soundToggle.querySelector('span');
   const on = s.textContent === 'OFF';
   s.textContent = on ? 'ON' : 'OFF';
   document.body.classList.toggle('ambience-on', on);
+});
+
+/* Keyboard shortcuts */
+addEventListener('keydown', e => {
+  if (e.target.matches('input, textarea')) return;
+  if (e.key === 'r' || e.key === 'R') {
+    autoRotate = !autoRotate;
+  }
+  if (e.key === 'ArrowRight') {
+    yearSlider.value = Math.min(2026, +yearSlider.value + 2);
+    yearUpdate();
+  }
+  if (e.key === 'ArrowLeft') {
+    yearSlider.value = Math.max(1992, +yearSlider.value - 2);
+    yearUpdate();
+  }
 });
