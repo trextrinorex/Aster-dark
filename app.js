@@ -114,34 +114,25 @@ const earthMat = new THREE.ShaderMaterial({
       vec3 nightCol = texture2D(nightTexture, vUv).rgb;
       float elev = texture2D(topoTexture, vUv).r;
 
-      // Cinematic day grading
       dayCol *= vec3(0.9, 0.95, 1.05);
       dayCol = pow(dayCol, vec3(0.95));
 
-      // Strong night lights
       nightCol = pow(nightCol, vec3(0.85));
       nightCol *= nightIntensity * 2.2;
 
       vec3 N = normalize(vNormal);
       float ndl = dot(N, sunDirection);
-
-      // Soft but clear terminator
       float dayF = smoothstep(-0.08, 0.35, ndl);
 
       vec3 color = mix(nightCol, dayCol, dayF);
-
-      // Topography
       color *= 0.85 + elev * 0.28;
 
-      // Atmosphere rim (day)
       float rim = pow(1.0 - max(dot(N, vec3(0.0, 0.0, 1.0)), 0.0), 2.8);
       color += dayF * rim * vec3(0.35, 0.55, 0.75) * 0.35;
 
-      // City light bloom on night side
       float city = length(nightCol) * (1.0 - dayF);
       color += vec3(1.0, 0.65, 0.25) * city * 0.35;
 
-      // Subtle pulse on brightest lights
       float pulse = 0.97 + 0.03 * sin(time * 2.0 + vUv.x * 20.0);
       color = mix(color, color * pulse, (1.0 - dayF) * 0.4);
 
@@ -199,7 +190,7 @@ const clouds = new THREE.Mesh(
 );
 earthGroup.add(clouds);
 
-/* City markers with pulse */
+/* City markers */
 const cityData = [
   ['Delhi', 28.6139, 77.209, 'IND-DEL', 86],
   ['Mumbai', 19.076, 72.8777, 'IND-MUM', 82],
@@ -258,44 +249,95 @@ cityData.forEach(([name, lat, lon, code, index]) => {
   cityGlows.push(glow);
 });
 
-/* Lights */
 scene.add(new THREE.DirectionalLight(0xf0f4f4, 1.9));
 scene.add(new THREE.AmbientLight(0x152028, 0.28));
 
-/* ---------- Interaction (faster drag / touch) ---------- */
+/* ---------- Interaction — fast one-finger / mouse drag ---------- */
 let rx = 0.14, ry = -0.9, trx = rx, tryy = ry, scale = 1, ts = 1;
 let drag = false, lx = 0, ly = 0;
 let autoRotate = true;
-let pointerType = 'mouse';
+let isTouch = false;
 
-// Higher sensitivity for touch/fingers; still snappy for mouse
-function dragSensitivity() {
-  return pointerType === 'touch' ? 0.018 : 0.011;
+canvas.style.touchAction = 'none';
+
+// Convert pixel movement to radians — tuned for finger speed
+function getSensitivity() {
+  // Touch needs much higher gain (fingers move fewer pixels for same gesture)
+  return isTouch ? 0.012 : 0.008;
 }
 
-canvas.style.touchAction = 'none'; // prevent page scroll while dragging Earth
-
-canvas.addEventListener('pointerdown', e => {
+function onPointerDown(e) {
   drag = true;
   autoRotate = false;
-  pointerType = e.pointerType || 'mouse';
+  isTouch = e.pointerType === 'touch' || e.pointerType === 'pen';
   lx = e.clientX;
   ly = e.clientY;
-  canvas.setPointerCapture(e.pointerId);
-});
+  try {
+    canvas.setPointerCapture(e.pointerId);
+  } catch (_) {}
+}
 
-canvas.addEventListener('pointerup', () => { drag = false; });
-canvas.addEventListener('pointercancel', () => { drag = false; });
+function onPointerUp() {
+  drag = false;
+}
 
-canvas.addEventListener('pointermove', e => {
+function onPointerMove(e) {
   if (!drag) return;
-  const sens = dragSensitivity();
-  tryy += (e.clientX - lx) * sens;
-  trx += (e.clientY - ly) * sens * 0.75;
-  trx = Math.max(-0.85, Math.min(0.85, trx));
+  const dx = e.clientX - lx;
+  const dy = e.clientY - ly;
   lx = e.clientX;
   ly = e.clientY;
-});
+
+  // Scale by viewport so a full-screen swipe ≈ half a turn
+  const sensX = (Math.PI * 1.2) / Math.max(innerWidth, 320);
+  const sensY = (Math.PI * 0.7) / Math.max(innerHeight, 320);
+  // Extra boost for touch
+  const boost = isTouch ? 1.8 : 1.0;
+
+  tryy += dx * sensX * boost;
+  trx += dy * sensY * boost;
+  trx = Math.max(-0.9, Math.min(0.9, trx));
+
+  // Apply immediately while dragging (no lag)
+  rx = trx;
+  ry = tryy;
+}
+
+canvas.addEventListener('pointerdown', onPointerDown);
+canvas.addEventListener('pointerup', onPointerUp);
+canvas.addEventListener('pointercancel', onPointerUp);
+canvas.addEventListener('pointermove', onPointerMove);
+
+// Fallback native touch for older mobile browsers
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length !== 1) return;
+  const t = e.touches[0];
+  drag = true;
+  autoRotate = false;
+  isTouch = true;
+  lx = t.clientX;
+  ly = t.clientY;
+}, { passive: true });
+
+canvas.addEventListener('touchmove', e => {
+  if (!drag || e.touches.length !== 1) return;
+  e.preventDefault();
+  const t = e.touches[0];
+  const dx = t.clientX - lx;
+  const dy = t.clientY - ly;
+  lx = t.clientX;
+  ly = t.clientY;
+  const sensX = (Math.PI * 1.2) / Math.max(innerWidth, 320);
+  const sensY = (Math.PI * 0.7) / Math.max(innerHeight, 320);
+  tryy += dx * sensX * 1.8;
+  trx += dy * sensY * 1.8;
+  trx = Math.max(-0.9, Math.min(0.9, trx));
+  rx = trx;
+  ry = tryy;
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => { drag = false; });
+canvas.addEventListener('touchcancel', () => { drag = false; });
 
 canvas.addEventListener('wheel', e => {
   ts = Math.max(0.7, Math.min(1.5, ts - e.deltaY * 0.0005));
@@ -317,10 +359,14 @@ function animate() {
   if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
     if (autoRotate && !drag) tryy += 0.0012;
 
-    // Snappier follow so drag feels immediate
-    const follow = drag ? 0.22 : 0.1;
-    rx += (trx - rx) * follow;
-    ry += (tryy - ry) * follow;
+    if (drag) {
+      // Already applied in pointer handlers
+      rx = trx;
+      ry = tryy;
+    } else {
+      rx += (trx - rx) * 0.12;
+      ry += (tryy - ry) * 0.12;
+    }
     scale += (ts - scale) * 0.1;
     scrollProgress += (scrollTarget - scrollProgress) * 0.04;
 
@@ -329,7 +375,6 @@ function animate() {
     clouds.rotation.y += 0.00022;
     stars.rotation.y += 0.00004;
 
-    // Gentle city pulse
     const pulse = 0.75 + 0.25 * Math.sin(t * 2.4);
     cityGlows.forEach((g, i) => {
       g.material.opacity = 0.12 + 0.14 * pulse * (0.7 + 0.3 * Math.sin(t + i));
@@ -348,13 +393,13 @@ addEventListener('resize', () => {
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 });
 
-/* Resume auto-rotate after idle */
 let idleTimer;
 function resetIdle() {
   clearTimeout(idleTimer);
   idleTimer = setTimeout(() => { if (!drag) autoRotate = true; }, 6000);
 }
 canvas.addEventListener('pointerup', resetIdle);
+canvas.addEventListener('touchend', resetIdle);
 canvas.addEventListener('wheel', resetIdle);
 
 /* ============================================================
@@ -408,7 +453,6 @@ function yearUpdate() {
 yearSlider.addEventListener('input', yearUpdate);
 yearUpdate();
 
-/* Regions */
 const regionData = {
   GLOBAL: ['74.8', '+214%', 'GLB-00', 'Global composite view of artificial illumination.'],
   INDIA: ['82.1', '+268%', 'IND-91', 'A dense network of urban illumination across the subcontinent.'],
@@ -459,7 +503,6 @@ document.querySelectorAll('#regionList button').forEach(b => {
   });
 });
 
-/* Cities list */
 const cityList = document.querySelector('#cityList');
 cityData.forEach(([name, lat, lon, code, index]) => {
   const b = document.createElement('button');
@@ -479,7 +522,6 @@ cityData.forEach(([name, lat, lon, code, index]) => {
   cityList.appendChild(b);
 });
 
-/* Pollution */
 const pollutionSlider = document.querySelector('#pollutionSlider');
 const pollutionValue = document.querySelector('#pollutionValue');
 
@@ -495,7 +537,6 @@ function pollutionUpdate() {
 pollutionSlider.addEventListener('input', pollutionUpdate);
 pollutionUpdate();
 
-/* Restore */
 const citySlider = document.querySelector('#citySlider');
 const cityValue = document.querySelector('#cityValue');
 const cityLightsEl = document.querySelector('.city-lights');
@@ -519,7 +560,6 @@ document.querySelector('#restoreBtn').addEventListener('click', () => {
   cityUpdate();
 });
 
-/* Nav */
 document.querySelector('#enterBtn').addEventListener('click', () => {
   document.querySelector('#earth').scrollIntoView({ behavior: 'smooth' });
 });
@@ -530,7 +570,6 @@ document.querySelector('#menuBtn').addEventListener('click', () => {
   (next || document.querySelector('.scene')).scrollIntoView({ behavior: 'smooth' });
 });
 
-/* Progress */
 const sceneLabel = document.querySelector('#sceneLabel');
 const progressBar = document.querySelector('#progressBar');
 const io = new IntersectionObserver(entries => {
@@ -545,7 +584,6 @@ const io = new IntersectionObserver(entries => {
 }, { threshold: 0.28 });
 document.querySelectorAll('.scene').forEach(s => io.observe(s));
 
-/* Sound toggle */
 const soundToggle = document.querySelector('#soundToggle');
 soundToggle.addEventListener('click', () => {
   const s = soundToggle.querySelector('span');
@@ -554,12 +592,9 @@ soundToggle.addEventListener('click', () => {
   document.body.classList.toggle('ambience-on', on);
 });
 
-/* Keyboard shortcuts */
 addEventListener('keydown', e => {
   if (e.target.matches('input, textarea')) return;
-  if (e.key === 'r' || e.key === 'R') {
-    autoRotate = !autoRotate;
-  }
+  if (e.key === 'r' || e.key === 'R') autoRotate = !autoRotate;
   if (e.key === 'ArrowRight') {
     yearSlider.value = Math.min(2026, +yearSlider.value + 2);
     yearUpdate();
